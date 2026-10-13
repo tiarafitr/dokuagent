@@ -1,0 +1,16 @@
+{
+  "qwen2.5:1.5b-instruct": {
+    "nomor_invoice": 0.9333333333333333,
+    "tanggal": 0.9833333333333333,
+    "nama_penjual": 0.6166666666666667,
+    "npwp_penjual": 0.9,
+    "nama_pembeli": 0.7833333333333333,
+    "subtotal": 0.95,
+    "ppn": 0.9166666666666666,
+    "total": 0.9666666666666667,
+    "items_f1": 0.28753968253968254,
+    "field_avg": 0.88125,
+    "json_valid": 1.0,
+    "latency_p50_s": 6.65
+  }
+}
