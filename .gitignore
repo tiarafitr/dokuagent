@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+data/raw/
+data/sft/
+models/*.gguf
+qdrant_db/
+logs/
+service_account.json
+.env
