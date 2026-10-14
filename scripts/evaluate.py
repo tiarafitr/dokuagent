@@ -44,14 +44,17 @@ def score(pred, gold):
     return r
 
 
-def evaluate(model, ids, extract_fn):
+def evaluate(model, ids, extract_fn, post=None):
     rows, valid, lat = [], 0, []
     for stem in ids:
         text = Path(f"data/sft/ocr/{stem}.txt").read_text()
         gold = json.loads(Path(f"data/labels/{stem}.json").read_text())
         out = extract_fn(text, model)
         valid += out["json_valid"]; lat.append(out["latency_s"])
-        rows.append(score(out["data"] if isinstance(out["data"], dict) else {}, gold))
+        pred = out["data"] if isinstance(out["data"], dict) else {}
+        if post:
+            pred, _ = post(pred)
+        rows.append(score(pred, gold))
     res = {k: statistics.mean(r[k] for r in rows) for k in rows[0]}
     res["field_avg"] = statistics.mean(res[f] for f in FIELDS)
     res["json_valid"] = valid / len(ids)
@@ -63,10 +66,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="+", required=True)
     ap.add_argument("--limit", type=int, default=60)
+    ap.add_argument("--vendor", action="store_true", help="koreksi nama penjual via data master NPWP")
     a = ap.parse_args()
     from app.extractor import extract
+    post = None
+    if a.vendor:
+        from app.vendor import resolve_vendor as post
     ids = [json.loads(l)["id"] for l in open("data/sft/test.jsonl")][: a.limit]
-    results = {m: evaluate(m, ids, extract) for m in a.models}
+    results = {m: evaluate(m, ids, extract, post) for m in a.models}
     cols = ["field_avg", "items_f1", "json_valid", "latency_p50_s"] + FIELDS
     lines = ["| metrik | " + " | ".join(a.models) + " |", "|---" * (len(a.models) + 1) + "|"]
     for c in cols:

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.ocr import extract_text
 from app.extractor import extract
 from app.validator import validate
+from app.vendor import resolve_vendor
 
 MODEL = os.getenv("EXTRACT_MODEL", "dokuagent")
 LOG = Path("logs/requests.jsonl")
@@ -37,7 +38,11 @@ async def extract_endpoint(file: UploadFile = File(...)):
     if not text.strip():
         raise HTTPException(422, "Tidak ada teks yang terbaca dari file")
     out = extract(text, MODEL)
-    issues = validate(out["data"]) if out["json_valid"] else ["output model bukan JSON valid"]
+    if out["json_valid"]:
+        out["data"], notes = resolve_vendor(out["data"])   # koreksi nama penjual via NPWP
+        issues = validate(out["data"]) + notes
+    else:
+        issues = ["output model bukan JSON valid"]
     log({"type": "extract", "file": file.filename, "latency_s": out["latency_s"], "issues": len(issues)})
     return {"data": out["data"], "issues": issues, "needs_review": bool(issues),
             "latency_s": out["latency_s"], "ocr_text": text}

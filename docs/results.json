@@ -2,15 +2,15 @@
   "dokuagent": {
     "nomor_invoice": 0.9666666666666667,
     "tanggal": 1.0,
-    "nama_penjual": 0.7666666666666667,
+    "nama_penjual": 0.9666666666666667,
     "npwp_penjual": 1.0,
     "nama_pembeli": 0.9833333333333333,
     "subtotal": 1.0,
     "ppn": 1.0,
     "total": 1.0,
     "items_f1": 0.9563888888888888,
-    "field_avg": 0.9645833333333333,
+    "field_avg": 0.9895833333333334,
     "json_valid": 1.0,
-    "latency_p50_s": 8.2
+    "latency_p50_s": 7.17
   }
 }
