@@ -1,18 +1,4 @@
 {
-  "qwen2.5:1.5b-instruct": {
-    "nomor_invoice": 0.95,
-    "tanggal": 1.0,
-    "nama_penjual": 0.65,
-    "npwp_penjual": 0.8666666666666667,
-    "nama_pembeli": 0.8,
-    "subtotal": 0.95,
-    "ppn": 0.8333333333333334,
-    "total": 0.9833333333333333,
-    "items_f1": 0.4088888888888889,
-    "field_avg": 0.8791666666666667,
-    "json_valid": 1.0,
-    "latency_p50_s": 5.895
-  },
   "dokuagent": {
     "nomor_invoice": 0.9666666666666667,
     "tanggal": 1.0,
@@ -22,9 +8,9 @@
     "subtotal": 1.0,
     "ppn": 1.0,
     "total": 1.0,
-    "items_f1": 0.8730555555555556,
+    "items_f1": 0.9563888888888888,
     "field_avg": 0.9645833333333333,
     "json_valid": 1.0,
-    "latency_p50_s": 7.05
+    "latency_p50_s": 8.2
   }
 }

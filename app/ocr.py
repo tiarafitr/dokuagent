@@ -1,4 +1,6 @@
 """Ubah PDF/gambar menjadi teks baris per baris."""
+import math
+import statistics
 from pathlib import Path
 import pdfplumber
 
@@ -12,20 +14,39 @@ def _rapid():
     return _engine
 
 def image_to_text(path: str) -> str:
+    """OCR gambar lalu susun ulang kotak teks menjadi baris.
+
+    Gambar scan sering miring 1-3 derajat. Kotak teks diluruskan dulu (deskew
+    berdasarkan kemiringan rata-rata kotak), baru dikelompokkan per baris,
+    supaya kolom kanan (angka) tidak tercampur dengan baris lain.
+    """
     result, _ = _rapid()(str(path))
     if not result:
         return ""
-    # result: [[box, text, score], ...]; kelompokkan kotak per baris berdasarkan posisi y
-    boxes = sorted(((b[0][1] + b[2][1]) / 2, b[0][0], t) for b, t, s in result)
-    lines, cur, last_y = [], [], None
-    for y, x, t in boxes:
-        if last_y is not None and abs(y - last_y) > 12:
-            lines.append(" ".join(w for _, w in sorted(cur)))
-            cur = []
-        cur.append((x, t)); last_y = y
-    if cur:
-        lines.append(" ".join(w for _, w in sorted(cur)))
-    return "\n".join(lines)
+    angles, heights = [], []
+    for box, _t, _s in result:
+        (x0, y0), (x1, y1), _, (x3, y3) = box
+        if x1 - x0 > 30:
+            angles.append(math.atan2(y1 - y0, x1 - x0))
+        heights.append(math.hypot(x3 - x0, y3 - y0))
+    ang = statistics.median(angles) if angles else 0.0
+    h = statistics.median(heights) if heights else 20.0
+    cos, sin = math.cos(ang), math.sin(ang)
+    words = []
+    for box, text, _s in result:
+        cx = sum(p[0] for p in box) / 4
+        cy = sum(p[1] for p in box) / 4
+        words.append((-cx * sin + cy * cos, cx * cos + cy * sin, text))  # (y lurus, x lurus, teks)
+    words.sort()
+    rows = []
+    for y, x, t in words:
+        if rows and abs(y - rows[-1]["y"]) < 0.5 * h:
+            r = rows[-1]
+            r["items"].append((x, t))
+            r["y"] = (r["y"] * (len(r["items"]) - 1) + y) / len(r["items"])
+        else:
+            rows.append({"y": y, "items": [(x, t)]})
+    return "\n".join(" ".join(t for _, t in sorted(r["items"])) for r in rows)
 
 def pdf_to_text(path: str) -> str:
     with pdfplumber.open(path) as pdf:
