@@ -1,13 +1,22 @@
 """Evaluasi extractor di test set: akurasi per field, F1 item, JSON valid, latensi.
-Pakai: python scripts/evaluate.py --models qwen2.5:1.5b-instruct qwen2.5:7b dokuagent
+
+Field yang labelnya kosong (null) TIDAK dinilai, supaya angka tetap jujur untuk data
+yang labelnya tidak lengkap (mis. CORD tidak punya nama toko/tanggal).
+
+Pakai:
+  python scripts/evaluate.py --models qwen2.5:1.5b-instruct dokuagent            # invoice sintetis
+  python scripts/evaluate.py --models dokuagent --vendor                          # + koreksi NPWP
+  python scripts/evaluate.py --models qwen2.5:1.5b-instruct dokuagent --data data/real   # nota asli
 """
 import argparse, json, re, statistics, sys
+from collections import defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-FIELDS = ["nomor_invoice", "tanggal", "nama_penjual", "npwp_penjual",
-          "nama_pembeli", "subtotal", "ppn", "total"]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.schemas import FIELDS  # noqa: E402
+
+ALL_FIELDS = FIELDS["invoice"]
 
 
 def norm(v):
@@ -38,25 +47,34 @@ def item_f1(pred, gold):
     return 2 * prec * rec / (prec + rec)
 
 
+def doc_type_of(gold: dict) -> str:
+    return "invoice" if "nomor_invoice" in gold else "nota"
+
+
 def score(pred, gold):
-    r = {f: float(norm(pred.get(f)) == norm(gold[f])) for f in FIELDS}
+    """Nilai hanya field yang ada labelnya. Return {field: 0/1, 'items_f1': float}."""
+    r = {f: float(norm(pred.get(f)) == norm(gold[f]))
+         for f in ALL_FIELDS if gold.get(f) is not None}
     r["items_f1"] = item_f1(pred.get("items"), gold["items"])
     return r
 
 
-def evaluate(model, ids, extract_fn, post=None):
-    rows, valid, lat = [], 0, []
+def evaluate(model, ids, extract_fn, post=None, base="data"):
+    sums, counts, valid, lat = defaultdict(float), defaultdict(int), 0, []
     for stem in ids:
-        text = Path(f"data/sft/ocr/{stem}.txt").read_text()
-        gold = json.loads(Path(f"data/labels/{stem}.json").read_text())
-        out = extract_fn(text, model)
+        text = Path(f"{base}/sft/ocr/{stem}.txt").read_text()
+        gold = json.loads(Path(f"{base}/labels/{stem}.json").read_text())
+        dt = doc_type_of(gold)
+        out = extract_fn(text, model, dt)
         valid += out["json_valid"]; lat.append(out["latency_s"])
         pred = out["data"] if isinstance(out["data"], dict) else {}
-        if post:
+        if post and dt == "invoice":
             pred, _ = post(pred)
-        rows.append(score(pred, gold))
-    res = {k: statistics.mean(r[k] for r in rows) for k in rows[0]}
-    res["field_avg"] = statistics.mean(res[f] for f in FIELDS)
+        for k, v in score(pred, gold).items():
+            sums[k] += v; counts[k] += 1
+    res = {k: sums[k] / counts[k] for k in sums}
+    scored = [f for f in ALL_FIELDS if f in res]
+    res["field_avg"] = statistics.mean(res[f] for f in scored) if scored else float("nan")
     res["json_valid"] = valid / len(ids)
     res["latency_p50_s"] = statistics.median(lat)
     return res
@@ -66,20 +84,25 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="+", required=True)
     ap.add_argument("--limit", type=int, default=60)
+    ap.add_argument("--data", default="data", help="folder data, mis. data/real untuk nota asli")
     ap.add_argument("--vendor", action="store_true", help="koreksi nama penjual via data master NPWP")
     a = ap.parse_args()
     from app.extractor import extract
     post = None
     if a.vendor:
         from app.vendor import resolve_vendor as post
-    ids = [json.loads(l)["id"] for l in open("data/sft/test.jsonl")][: a.limit]
-    results = {m: evaluate(m, ids, extract, post) for m in a.models}
-    cols = ["field_avg", "items_f1", "json_valid", "latency_p50_s"] + FIELDS
+    ids = [json.loads(l)["id"] for l in open(f"{a.data}/sft/test.jsonl")][: a.limit]
+    results = {m: evaluate(m, ids, extract, post, a.data) for m in a.models}
+    cols = ["field_avg", "items_f1", "json_valid", "latency_p50_s"] + ALL_FIELDS
     lines = ["| metrik | " + " | ".join(a.models) + " |", "|---" * (len(a.models) + 1) + "|"]
     for c in cols:
-        lines.append(f"| {c} | " + " | ".join(f"{results[m][c]:.3f}" for m in a.models) + " |")
+        cells = [f"{results[m][c]:.3f}" if c in results[m] else "-" for m in a.models]
+        lines.append(f"| {c} | " + " | ".join(cells) + " |")
     table = "\n".join(lines)
     print(table)
+    print(f"\n({len(ids)} dokumen; '-' = field tidak dinilai karena labelnya kosong)")
+    nama = "results" if a.data == "data" else "results_" + Path(a.data).name
     Path("docs").mkdir(exist_ok=True)
-    Path("docs/results.md").write_text("# Hasil evaluasi (test set)\n\n" + table + "\n")
-    json.dump(results, open("docs/results.json", "w"), indent=2)
+    Path(f"docs/{nama}.md").write_text("# Hasil evaluasi (test set)\n\n" + table + "\n")
+    with open(f"docs/{nama}.json", "w") as fh:
+        json.dump(results, fh, indent=2)

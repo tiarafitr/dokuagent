@@ -1,7 +1,7 @@
 """API DokuAgent. Jalankan: uvicorn app.main:app --reload  → buka http://localhost:8000/docs"""
 import json, os, shutil, tempfile, time
 from pathlib import Path
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from app.ocr import extract_text
 from app.extractor import extract
@@ -25,7 +25,10 @@ def health():
 
 
 @app.post("/extract")
-async def extract_endpoint(file: UploadFile = File(...)):
+async def extract_endpoint(file: UploadFile = File(...), doc_type: str = Form("invoice")):
+    """doc_type: "invoice" (faktur pemasok) atau "nota" (struk reimbursement)."""
+    if doc_type not in ("invoice", "nota"):
+        raise HTTPException(400, "doc_type harus 'invoice' atau 'nota'")
     suffix = Path(file.filename or "").suffix.lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
@@ -37,14 +40,16 @@ async def extract_endpoint(file: UploadFile = File(...)):
         os.unlink(tmp.name)
     if not text.strip():
         raise HTTPException(422, "Tidak ada teks yang terbaca dari file")
-    out = extract(text, MODEL)
+    out = extract(text, MODEL, doc_type)
     if out["json_valid"]:
-        out["data"], notes = resolve_vendor(out["data"])   # koreksi nama penjual via NPWP
-        issues = validate(out["data"]) + notes
+        notes = []
+        if doc_type == "invoice":
+            out["data"], notes = resolve_vendor(out["data"])   # koreksi nama penjual via NPWP
+        issues = validate(out["data"], doc_type) + notes
     else:
         issues = ["output model bukan JSON valid"]
-    log({"type": "extract", "file": file.filename, "latency_s": out["latency_s"], "issues": len(issues)})
-    return {"data": out["data"], "issues": issues, "needs_review": bool(issues),
+    log({"type": "extract", "doc_type": doc_type, "file": file.filename, "latency_s": out["latency_s"], "issues": len(issues)})
+    return {"doc_type": doc_type, "data": out["data"], "issues": issues, "needs_review": bool(issues),
             "latency_s": out["latency_s"], "ocr_text": text}
 
 

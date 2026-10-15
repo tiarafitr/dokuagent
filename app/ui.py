@@ -15,10 +15,13 @@ except requests.RequestException:
     st.error(f"API tidak bisa dihubungi di {API}. Jalankan dulu: uvicorn app.main:app")
     st.stop()
 
-f = st.file_uploader("Upload invoice (PDF / JPG / PNG)", type=["pdf", "jpg", "jpeg", "png"])
+JENIS = {"Invoice pemasok": "invoice", "Struk reimbursement": "nota"}
+jenis = st.radio("Jenis dokumen", list(JENIS), horizontal=True)
+f = st.file_uploader("Upload dokumen (PDF / JPG / PNG)", type=["pdf", "jpg", "jpeg", "png"])
 if f and st.button("Proses", type="primary"):
     with st.spinner("OCR + ekstraksi..."):
-        r = requests.post(f"{API}/extract", files={"file": (f.name, f.getvalue())}, timeout=300)
+        r = requests.post(f"{API}/extract", files={"file": (f.name, f.getvalue())},
+                          data={"doc_type": JENIS[jenis]}, timeout=300)
     if r.ok:
         st.session_state.res = r.json()
         st.session_state.file = f.getvalue() if f.type.startswith("image") else None
@@ -40,12 +43,15 @@ if res:
             st.warning("Perlu dicek manusia:\n\n- " + "\n- ".join(res["issues"]))
         else:
             st.success("Semua validasi lolos")
-        c1, c2 = st.columns(2)
-        d["nomor_invoice"] = c1.text_input("Nomor invoice", d.get("nomor_invoice") or "")
-        d["tanggal"] = c2.text_input("Tanggal (YYYY-MM-DD)", d.get("tanggal") or "")
-        d["nama_penjual"] = c1.text_input("Nama penjual", d.get("nama_penjual") or "")
-        d["npwp_penjual"] = c2.text_input("NPWP penjual", d.get("npwp_penjual") or "")
-        d["nama_pembeli"] = st.text_input("Nama pembeli", d.get("nama_pembeli") or "")
+        if res.get("doc_type", "invoice") == "invoice":
+            c1, c2 = st.columns(2)
+            d["nomor_invoice"] = c1.text_input("Nomor invoice", d.get("nomor_invoice") or "")
+            d["tanggal"] = c2.text_input("Tanggal (YYYY-MM-DD)", d.get("tanggal") or "")
+            d["nama_penjual"] = c1.text_input("Nama penjual", d.get("nama_penjual") or "")
+            d["npwp_penjual"] = c2.text_input("NPWP penjual", d.get("npwp_penjual") or "")
+            d["nama_pembeli"] = st.text_input("Nama pembeli", d.get("nama_pembeli") or "")
+        else:
+            st.caption("Struk reimbursement: hanya barang dan total yang diekstrak.")
         items = pd.DataFrame(d.get("items") or [], columns=["deskripsi", "qty", "harga_satuan", "jumlah"])
         items = st.data_editor(items, num_rows="dynamic", use_container_width=True)
         d["items"] = json.loads(items.to_json(orient="records"))
@@ -60,4 +66,4 @@ if res:
             else:
                 st.error(r.json().get("detail", r.text))
         st.download_button("Download JSON", json.dumps(d, ensure_ascii=False, indent=2),
-                           file_name=f"{d.get('nomor_invoice', 'invoice').replace('/', '-')}.json")
+                           file_name=f"{(d.get('nomor_invoice') or (f.name if f else 'dokumen')).replace('/', '-')}.json")
