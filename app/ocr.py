@@ -13,7 +13,7 @@ def _rapid():
         _engine = RapidOCR()
     return _engine
 
-def image_to_text(path: str) -> str:
+def _ocr_image(path: str):
     """OCR gambar lalu susun ulang kotak teks menjadi baris.
 
     Gambar scan sering miring 1-3 derajat. Kotak teks diluruskan dulu (deskew
@@ -22,7 +22,7 @@ def image_to_text(path: str) -> str:
     """
     result, _ = _rapid()(str(path))
     if not result:
-        return ""
+        return "", []
     angles, heights = [], []
     for box, _t, _s in result:
         (x0, y0), (x1, y1), _, (x3, y3) = box
@@ -46,7 +46,24 @@ def image_to_text(path: str) -> str:
             r["y"] = (r["y"] * (len(r["items"]) - 1) + y) / len(r["items"])
         else:
             rows.append({"y": y, "items": [(x, t)]})
-    return "\n".join(" ".join(t for _, t in sorted(r["items"])) for r in rows)
+    text = "\n".join(" ".join(t for _, t in sorted(r["items"])) for r in rows)
+    return text, [float(sc) for _b, _t, sc in result]
+
+
+def _quality(scores) -> dict:
+    """Ringkasan keyakinan OCR. mean_conf rendah = dokumen sulit dibaca (buram, tulisan tangan)."""
+    if not scores:
+        return {"boxes": 0, "mean_conf": 0.0, "low_ratio": 1.0}
+    return {"boxes": len(scores),
+            "mean_conf": round(statistics.mean(scores), 3),
+            "low_ratio": round(sum(sc < 0.8 for sc in scores) / len(scores), 3)}
+
+
+def image_to_text(path: str) -> str:
+    return _ocr_image(path)[0]
+
+
+
 
 def pdf_to_text(path: str) -> str:
     with pdfplumber.open(path) as pdf:
@@ -61,6 +78,22 @@ def pdf_to_text(path: str) -> str:
                 pages.append(image_to_text(img_path))
         text = "\n".join(pages)
     return text
+
+def extract_text_with_quality(path: str):
+    """Seperti extract_text, plus ringkasan kualitas OCR (untuk deteksi dokumen sulit dibaca)."""
+    ext = Path(path).suffix.lower()
+    if ext == ".pdf":
+        text = pdf_to_text(path)
+        with pdfplumber.open(path) as pdf:
+            digital = len("".join((p.extract_text() or "") for p in pdf.pages).strip()) >= 30
+        if digital:
+            return text, {"boxes": len(text.split()), "mean_conf": 1.0, "low_ratio": 0.0}
+        return text, {"boxes": len(text.split()), "mean_conf": None, "low_ratio": None}
+    if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+        text, scores = _ocr_image(path)
+        return text, _quality(scores)
+    raise ValueError(f"Format tidak didukung: {ext}")
+
 
 def extract_text(path: str) -> str:
     ext = Path(path).suffix.lower()

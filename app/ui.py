@@ -38,7 +38,17 @@ if res:
         with st.expander("Teks hasil OCR"):
             st.text(res["ocr_text"])
     with kanan:
-        st.caption(f"Waktu proses: {res['latency_s']} detik")
+        q = res.get("ocr_quality") or {}
+        info = f"Waktu proses: {res['latency_s']} detik"
+        if q.get("mean_conf") is not None:
+            info += f" · keyakinan OCR: {q['mean_conf']:.0%}"
+        if res.get("model"):
+            info += f" · model: {res['model']}"
+        st.caption(info)
+        if res.get("status") == "gagal":
+            st.error("**Hasil ekstraksi tidak bisa dipercaya.** Sebagian besar barang atau total "
+                     "tidak ditemukan di dokumen (mis. tulisan tangan, layout asing). "
+                     "Isi atau koreksi semua field secara manual.")
         if res["issues"]:
             st.warning("Perlu dicek manusia:\n\n- " + "\n- ".join(res["issues"]))
         else:
@@ -55,10 +65,16 @@ if res:
         items = pd.DataFrame(d.get("items") or [], columns=["deskripsi", "qty", "harga_satuan", "jumlah"])
         items = st.data_editor(items, num_rows="dynamic", use_container_width=True)
         d["items"] = json.loads(items.to_json(orient="records"))
+        def angka(v):
+            try:
+                return int(v) if v not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
         c1, c2, c3 = st.columns(3)
-        d["subtotal"] = c1.number_input("Subtotal", value=int(d.get("subtotal") or 0), step=1)
-        d["ppn"] = c2.number_input("PPN", value=int(d.get("ppn") or 0), step=1)
-        d["total"] = c3.number_input("Total", value=int(d.get("total") or 0), step=1)
+        # value=None -> kotak kosong, supaya "tidak ada di dokumen" tidak tampil sebagai 0
+        d["subtotal"] = c1.number_input("Subtotal", value=angka(d.get("subtotal")), step=1, placeholder="tidak ada")
+        d["ppn"] = c2.number_input("PPN", value=angka(d.get("ppn")), step=1, placeholder="tidak ada")
+        d["total"] = c3.number_input("Total", value=angka(d.get("total")), step=1, placeholder="tidak ada")
         if st.button("Kirim ke Google Sheets"):
             r = requests.post(f"{API}/push", json={"data": d}, timeout=60)
             if r.ok:
