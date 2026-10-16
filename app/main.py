@@ -8,7 +8,7 @@ from app.extractor import extract
 from app.validator import validate
 from app.vendor import resolve_vendor
 
-MODEL = os.getenv("EXTRACT_MODEL", "dokuagent")
+MODEL = os.getenv("EXTRACT_MODEL", "dokuagent-v2")
 LOG = Path("logs/requests.jsonl")
 LOG.parent.mkdir(exist_ok=True)
 app = FastAPI(title="DokuAgent", description="Ekstraksi invoice Indonesia dengan LLM lokal hasil fine-tuning")
