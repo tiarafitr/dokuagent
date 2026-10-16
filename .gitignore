@@ -9,3 +9,6 @@ service_account.json
 .env
 .DS_Store
 data/labels/
+data/real/
+data/colab/
+*.gguf
