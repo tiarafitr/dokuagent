@@ -5,10 +5,6 @@
 OCR → fine-tuned Qwen2.5-1.5B (QLoRA) → business-rule validation & grounding checks → human review UI → Google Sheets.
 Runs fully offline on an 8 GB MacBook Air; no document ever leaves the machine.
 
-> 📹 **Demo (3 min):** _[link video]_ · 🤗 **Model:** _[link Hugging Face]_
-
-![DokuAgent review UI](docs/assets/ui_review.png)
-
 ---
 
 ## The problem
